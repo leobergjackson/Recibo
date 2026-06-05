@@ -55,7 +55,7 @@ Recibo is an AI-powered USDC payment gateway for LATAM freelancers, built for th
 ## Team
 - **Anand Vashishtha** ([@Anand-0037](https://github.com/Anand-0037)) — Smart contracts + AI parsing
 - **Mansi Yadav** ([@Mansi2007275](https://github.com/Mansi2007275)) — Frontend + UX
-- **Rohit** — Testing + on-chain proofs
+- **Rupesh** — Testing + on-chain proofs
 
 ## Local Development
 
