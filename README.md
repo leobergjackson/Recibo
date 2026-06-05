@@ -1,5 +1,7 @@
 # Recibo
 
+**Sponsor Tracks:** Bitso Business · Ethereum Mexico · Arbitrum · SuperRare / Rare Protocol
+
 Recibo is an AI-powered USDC payment gateway for LATAM freelancers, built for the **Ethereum Mexico 2026** hackathon. It streamlines the entire workflow from receiving a client email to off-ramping funds into a Mexican bank account.
 
 ## One Demo Path
@@ -10,7 +12,7 @@ Recibo is an AI-powered USDC payment gateway for LATAM freelancers, built for th
 5. **Direct Off-Ramp:** Integrated instructions for withdrawing to MXN via Bitso.
 
 ## Tech Stack
-- **AI:** Groq Cloud (Parsing & Data Extraction)
+- **AI:** Groq Cloud (Parsing & Data Extraction - llama-3.3-70b-versatile)
 - **Blockchain:** Arbitrum Sepolia (USDC Payments)
 - **Smart Contracts:** Solidity (OpenZeppelin standards)
 - **Frontend:** Next.js 16, Tailwind CSS, Framer Motion
@@ -27,13 +29,31 @@ Recibo is an AI-powered USDC payment gateway for LATAM freelancers, built for th
 ### Real Transaction Proofs (Arbitrum Sepolia)
 *Note to judges: Use these hashes to verify contract interactions.*
 
-1. **Approve USDC:** [Insert your Hash 1]
-2. **Pay Invoice:** [Insert your Hash 2]
-3. **Pay Invoice (Repeat):** [Insert your Hash 3]
+1. **Approve USDC:** `[Pending Faucet Drop]`
+2. **Pay Invoice:** `[Pending Faucet Drop]`
+3. **Pay Invoice (Repeat):** `[Pending Faucet Drop]`
 
-*The Recibo contract at `0x563249FfE1783050D95A2dc70fE549909b4D09a8` emits the `InvoicePaid` event.*
+**Contract Address:** [0x563249FfE1783050D95A2dc70fE549909b4D09a8](https://sepolia.arbiscan.io/address/0x563249FfE1783050D95A2dc70fE549909b4D09a8)
+**Deployment Tx:** 0x0217eed43d9641f5255c032a544c0bffce7f6698448f1aa919a6929a8497cf61
 
-**Contract Deployment:** `0x0217eed43d9641f5255c032a544c0bffce7f6698448f1aa919a6929a8497cf61`
+## RARE Protocol Receipt (Sepolia)
+- Collection: `0x58E482D6e8106d9aac12146dF728913D9585404e`
+- Token ID: `[Pending RARE Mint]`
+- Mint Tx: `[Pending RARE Mint]`
+- View: `[Pending RARE Mint]`
+
+## Team
+- smart contract plus AI parsing, Nancy
+- otherwise content plus UX, Rohit
+- as testing plus function proofs
+
+## For Judges — 60-Second Verification
+1. Open the live site: https://recibo-theta.vercel.app
+2. Paste the sample invoice from `scripts/sample-invoice.json`
+3. Open the generated link in a second browser, connect a wallet on Arbitrum Sepolia, pay in USDC
+4. Confirm the `InvoicePaid` event on Arbiscan (link above)
+5. Try paying the same invoice twice — second attempt reverts `AlreadyPaid` (idempotency)
+6. View the RARE receipt NFT on Sepolia (link above)
 
 ## Local Development
 

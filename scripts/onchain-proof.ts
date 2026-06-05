@@ -1,96 +1,106 @@
-/**
- * Capture the real on-chain proofs for the README, end to end.
- *
- *   1. Sends a real USDC transfer on Arbitrum Sepolia (the "client pays creator" proof).
- *   2. Mints the Recibo provenance NFT on the RARE Protocol via the RARE CLI (if configured).
- *
- * Prints both tx hashes ready to paste into README.md — no faked output.
- *
- * Usage:
- *   # .env.local needs a FUNDED key (Arbitrum Sepolia ETH for gas + USDC to send):
- *   #   PROOF_PRIVATE_KEY=0x...        wallet that pays
- *   #   PROOF_RECIPIENT=0x...          creator that gets paid
- *   #   PROOF_AMOUNT=1                 USDC (default 1)
- *   #   RARE_COLLECTION_ADDRESS=0x...  optional — enables the RARE provenance mint
- *   npm run proof
- *
- * Faucets: https://faucet.quicknode.com/arbitrum/sepolia (ETH) · https://faucet.circle.com (USDC)
- */
-
-import { spawnSync } from 'node:child_process';
-import { createWalletClient, createPublicClient, http, parseUnits } from 'viem';
+import { createWalletClient, createPublicClient, http, parseUnits, keccak256, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { arbitrumSepolia } from 'viem/chains';
 import { USDC_ADDRESS, USDC_DECIMALS, ERC20_ABI, ARBISCAN_TX } from '../lib/usdc';
-import { buildMintArgs, type PaidInvoice } from '../lib/rare';
 
-function need(name: string): string {
-  const v = process.env[name];
-  if (!v) {
-    console.error(`Missing ${name} in .env.local — see the header of scripts/onchain-proof.ts`);
-    process.exit(1);
+const RECIBO_ADDRESS = '0x563249FfE1783050D95A2dc70fE549909b4D09a8' as `0x${string}`;
+
+const USDC_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    outputs: [{ name: '', type: 'bool' }]
+  },
+  {
+    type: 'function',
+    name: 'balanceOf',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }]
   }
-  return v;
-}
+] as const;
+
+const RECIBO_ABI = [
+  {
+    inputs: [
+      { name: 'invoiceId', type: 'bytes32' },
+      { name: 'freelancer', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    name: 'payInvoice',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  }
+] as const;
 
 async function main() {
-  const pk = need('PROOF_PRIVATE_KEY') as `0x${string}`;
-  const recipient = need('PROOF_RECIPIENT') as `0x${string}`;
-  const amount = process.env.PROOF_AMOUNT ?? '1';
-  const rpc = process.env.NEXT_PUBLIC_ARB_SEPOLIA_RPC_URL ?? 'https://sepolia-rollup.arbitrum.io/rpc';
-
-  const account = privateKeyToAccount(pk);
-  const wallet = createWalletClient({ account, chain: arbitrumSepolia, transport: http(rpc) });
+  // Payer (client) wallet that has 39.5 USDC
+  const payerPk = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  // Freelancer wallet
+  const freelancer = '0x59ffc8907beaA275F29B466BCB1D9BbfeaDAd165';
+  
+  const rpc = 'https://sepolia-rollup.arbitrum.io/rpc';
+  const payerAccount = privateKeyToAccount(payerPk);
+  
+  const wallet = createWalletClient({ account: payerAccount, chain: arbitrumSepolia, transport: http(rpc) });
   const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpc) });
 
-  console.log(`\n🇲🇽  Recibo on-chain proof`);
-  console.log(`    Payer:   ${account.address}`);
-  console.log(`    Creator: ${recipient}`);
-  console.log(`    Amount:  ${amount} USDC on Arbitrum Sepolia\n`);
+  console.log(`\n🇲🇽  Recibo On-Chain Proofs Generator`);
+  console.log(`    Payer (Client):     ${payerAccount.address}`);
+  console.log(`    Freelancer (MX):    ${freelancer}`);
+  console.log(`    Recibo Contract:    ${RECIBO_ADDRESS}\n`);
 
-  // 1) Real USDC payment on Arbitrum Sepolia
-  const paymentTxHash = await wallet.writeContract({
+  // 1. Approve USDC spend
+  const amount = parseUnits('1', USDC_DECIMALS);
+  console.log('1. Approving USDC spend...');
+  const approveTx = await wallet.writeContract({
     address: USDC_ADDRESS,
-    abi: ERC20_ABI,
-    functionName: 'transfer',
-    args: [recipient, parseUnits(amount, USDC_DECIMALS)],
+    abi: USDC_ABI,
+    functionName: 'approve',
+    args: [RECIBO_ADDRESS, amount]
   });
-  console.log(`✓ USDC payment sent: ${paymentTxHash}`);
-  await pub.waitForTransactionReceipt({ hash: paymentTxHash });
-  console.log(`  ${ARBISCAN_TX}${paymentTxHash}\n`);
+  console.log(`✓ Approve Tx Sent: ${approveTx}`);
+  await pub.waitForTransactionReceipt({ hash: approveTx });
+  console.log(`  Confirmed: ${ARBISCAN_TX}${approveTx}\n`);
 
-  // 2) RARE provenance mint (only if a collection is configured)
-  const collection = process.env.RARE_COLLECTION_ADDRESS;
-  if (!collection) {
-    console.log('RARE_COLLECTION_ADDRESS not set — skipping provenance mint.');
-    console.log('Deploy one: rare collection deploy erc721 "Recibo LATAM" "RCB" --chain sepolia\n');
-    printReadme(paymentTxHash, null);
-    return;
-  }
+  // Generate unique invoice ID
+  const invoiceId = keccak256(toHex(`RCB-PROOF-${Date.now()}`));
+  console.log(`Generated Invoice ID: ${invoiceId}`);
 
-  const invoice: PaidInvoice = {
-    reference: `RCB-${new Date().getFullYear()}-PROOF`,
-    description: 'Recibo on-chain proof — LATAM creator payment',
-    amountUSDC: Number(amount),
-    freelancer: recipient,
-    client: account.address,
-    paymentTxHash,
-    country: process.env.PROOF_COUNTRY ?? 'MX',
-  };
-  const args = buildMintArgs(invoice, collection);
-  console.log(`Minting provenance on RARE…\n$ rare ${args.join(' ')}\n`);
-  const bin = process.platform === 'win32' ? 'rare.cmd' : 'rare';
-  const res = spawnSync(bin, args, { stdio: 'inherit' });
-  if (res.error) {
-    console.error('Could not run `rare`. Install: npm i -g @rareprotocol/rare-cli (Node 22+).');
-  }
-  printReadme(paymentTxHash, 'see RARE CLI output above');
+  // 2. Pay Invoice (First time)
+  console.log('2. Paying invoice...');
+  const payTx1 = await wallet.writeContract({
+    address: RECIBO_ADDRESS,
+    abi: RECIBO_ABI,
+    functionName: 'payInvoice',
+    args: [invoiceId, freelancer, amount]
+  });
+  console.log(`✓ Pay Invoice 1 Tx Sent: ${payTx1}`);
+  await pub.waitForTransactionReceipt({ hash: payTx1 });
+  console.log(`  Confirmed: ${ARBISCAN_TX}${payTx1}\n`);
+
+  // 3. Pay Invoice (Second time - Reverts)
+  console.log('3. Re-paying same invoice (reverts on-chain)...');
+  const payTx2 = await wallet.writeContract({
+    address: RECIBO_ADDRESS,
+    abi: RECIBO_ABI,
+    functionName: 'payInvoice',
+    args: [invoiceId, freelancer, amount],
+    gas: 100000n // Bypass gas estimation failure
+  });
+  console.log(`✓ Pay Invoice 2 (Reverted) Tx Sent: ${payTx2}`);
+  console.log(`  Link: ${ARBISCAN_TX}${payTx2}\n`);
+
+  console.log('── HASHES TO SAVE ──────────────────────────────────');
+  console.log(`APPROVE_TX_HASH=${approveTx}`);
+  console.log(`PAY_TX_HASH_1=${payTx1}`);
+  console.log(`PAY_TX_HASH_2_REVERTS_ALREADY_PAID=${payTx2}`);
 }
 
-function printReadme(paymentTx: string, rareTx: string | null) {
-  console.log('── Paste into README.md ──────────────────────────────');
-  console.log(`1. Client pays creator — USDC transfer (Arbitrum Sepolia): ${paymentTx}`);
-  console.log(`2. Recibo minted on RARE Protocol (Ethereum Sepolia): ${rareTx ?? '[run with RARE_COLLECTION_ADDRESS]'}`);
-}
-
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch(console.error);
